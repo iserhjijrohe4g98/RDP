@@ -1,4 +1,4 @@
-```
+
 name: Linux Server (Root + All Ports Open)
 
 on:
@@ -99,5 +99,3 @@ jobs:
             sleep 60
             echo "[$(date)] Server running - All ports open"
           done
-
-```
