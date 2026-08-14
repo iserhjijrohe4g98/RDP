@@ -1,4 +1,4 @@
-name: Linux SSH Server
+name: Linux Server (Root + All Ports Open)
 
 on:
   workflow_dispatch:
@@ -9,40 +9,96 @@ jobs:
     timeout-minutes: 360
 
     steps:
-      - name: Setup SSH Server
+      - name: Disable Firewall Completely
         run: |
-          sudo apt update
-          sudo apt install openssh-server -y
-          sudo systemctl start ssh
-          
+          sudo ufw --force disable
+          sudo ufw --force reset
+          sudo systemctl stop ufw
+          sudo systemctl disable ufw
+          sudo iptables -P INPUT ACCEPT
+          sudo iptables -P FORWARD ACCEPT
+          sudo iptables -P OUTPUT ACCEPT
+          sudo iptables -t nat -F
+          sudo iptables -t mangle -F
+          sudo iptables -F
+          sudo iptables -X
+          sudo systemctl stop nftables 2>/dev/null
+          sudo systemctl disable nftables 2>/dev/null
+          echo "ALL FIREWALLS DISABLED"
+          echo "All ports are OPEN"
+
+      - name: Setup Root and SSH
+        run: |
+          sudo passwd -u root
+          echo "root:Root@2026" | sudo chpasswd
+          sudo sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config
+          sudo sed -i 's/#PermitRootLogin yes/PermitRootLogin yes/' /etc/ssh/sshd_config
+          sudo sed -i 's/PermitRootLogin no/PermitRootLogin yes/' /etc/ssh/sshd_config
           sudo sed -i 's/#PasswordAuthentication yes/PasswordAuthentication yes/' /etc/ssh/sshd_config
-          sudo systemctl restart ssh
-          
-          sudo useradd -m -s /bin/bash sshuser
-          echo "sshuser:Ssh@2026" | sudo chpasswd
-          sudo usermod -aG sudo sshuser
+          sudo sed -i 's/PasswordAuthentication no/PasswordAuthentication yes/' /etc/ssh/sshd_config
+          sudo apt-get update
+          sudo apt-get install openssh-server net-tools curl wget -y
+          sudo systemctl enable ssh
+          sudo systemctl start ssh
+
+      - name: Install Desktop and RDP
+        run: |
+          sudo apt-get install xfce4 xfce4-goodies xorg xrdp -y
+          echo "xfce4-session" > ~/.xsession
+          sudo systemctl enable xrdp
+          sudo systemctl start xrdp
 
       - name: Install Tailscale
         env:
           TAILSCALE_AUTHKEY: ${{ secrets.TAILSCALE_AUTHKEY }}
         run: |
           curl -fsSL https://tailscale.com/install.sh | sh
-          sudo tailscale up --authkey="$TAILSCALE_AUTHKEY" --hostname="ssh-only"
-          
-          IP=$(tailscale ip -4)
+          sudo tailscale up --authkey="$TAILSCALE_AUTHKEY" --hostname="linux-allports"
+          sleep 5
+          TS_IP=$(tailscale ip -4)
+          PUBLIC_IP=$(curl -s ifconfig.me)
           echo ""
-          echo "=========================================="
-          echo "  SSH SERVER READY!"
-          echo "  Connect with Bitvise:"
-          echo "  Host: $IP"
+          echo "=================================================="
+          echo "SERVER IS READY - ALL PORTS OPEN"
+          echo "=================================================="
+          echo ""
+          echo "TAILSCALE IP: $TS_IP"
+          echo "PUBLIC IP: $PUBLIC_IP"
+          echo ""
+          echo "SSH ACCESS:"
+          echo "  Host: $TS_IP or $PUBLIC_IP"
           echo "  Port: 22"
-          echo "  User: sshuser"
-          echo "  Pass: Ssh@2026"
-          echo "=========================================="
+          echo "  Username: root"
+          echo "  Password: Root@2026"
+          echo ""
+          echo "RDP ACCESS:"
+          echo "  Host: $TS_IP"
+          echo "  Port: 3389"
+          echo "  Username: root"
+          echo "  Password: Root@2026"
+          echo ""
+          echo "ALL PORTS ARE OPEN"
+          echo "  Port 22, 80, 443, 3389, 8080, etc"
+          echo "=================================================="
 
-      - name: Keep Alive
+      - name: Show Open Ports
         run: |
+          echo "OPEN PORTS:"
+          sudo netstat -tulpn | grep LISTEN
+          echo ""
+          echo "FIREWALL STATUS:"
+          sudo ufw status
+          echo ""
+          echo "IP ADDRESS:"
+          ip addr show
+
+      - name: Keep Server Alive
+        run: |
+          echo "SERVER RUNNING WITH ALL PORTS OPEN"
+          echo "Firewall: DISABLED"
+          echo "Root Access: ENABLED"
+          echo ""
           while true; do
             sleep 60
-            echo "SSH server running on port 22"
+            echo "[$(date)] Server running - All ports open"
           done
