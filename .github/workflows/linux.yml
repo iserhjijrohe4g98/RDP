@@ -1,0 +1,121 @@
+name: Linux Server (SSH + RDP)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+
+    steps:
+      - name: 1. Update System
+        run: |
+          sudo apt-get update
+          sudo apt-get upgrade -y
+
+      - name: 2. Install SSH Server
+        run: |
+          sudo apt-get install openssh-server -y
+          sudo systemctl enable ssh
+          sudo systemctl start ssh
+          
+          # تنظیم SSH برای اجازه دسترسی root
+          sudo sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config
+          sudo sed -i 's/#PasswordAuthentication yes/PasswordAuthentication yes/' /etc/ssh/sshd_config
+          sudo systemctl restart ssh
+          
+          # باز کردن پورت SSH
+          sudo ufw allow 22/tcp
+          sudo ufw reload
+
+      - name: 3. Install Desktop & RDP
+        run: |
+          # نصب XFCE و xRDP
+          sudo apt-get install xfce4 xfce4-goodies xorg xrdp -y
+          
+          # تنظیم xRDP
+          echo "xfce4-session" > ~/.xsession
+          sudo systemctl enable xrdp
+          sudo systemctl start xrdp
+          
+          # باز کردن پورت RDP
+          sudo ufw allow 3389/tcp
+          sudo ufw reload
+
+      - name: 4. Create Admin Users
+        run: |
+          # ایجاد کاربر برای SSH/RDP
+          sudo useradd -m -s /bin/bash admin
+          echo "admin:Admin@2026" | sudo chpasswd
+          sudo usermod -aG sudo admin
+          
+          # فعال کردن root با پسورد
+          echo "root:Root@2026" | sudo chpasswd
+          
+          # ایجاد کاربر دوم (اختیاری)
+          sudo useradd -m -s /bin/bash bitvise
+          echo "bitvise:Bitvise@2026" | sudo chpasswd
+          sudo usermod -aG sudo bitvise
+
+      - name: 5. Install & Connect Tailscale
+        env:
+          TAILSCALE_AUTHKEY: ${{ secrets.TAILSCALE_AUTHKEY }}
+        run: |
+          # نصب Tailscale
+          curl -fsSL https://tailscale.com/install.sh | sh
+          
+          # اتصال به شبکه
+          sudo tailscale up --authkey="$TAILSCALE_AUTHKEY" --hostname="github-linux-server"
+          
+          sleep 5
+          
+          # گرفتن IP
+          TS_IP=$(tailscale ip -4)
+          PUBLIC_IP=$(curl -s ifconfig.me)
+          
+          echo ""
+          echo "=================================================="
+          echo "  >>> SERVER IS READY! <<<"
+          echo "=================================================="
+          echo ""
+          echo "🌐 TAILSCALE IP: $TS_IP"
+          echo "🌍 PUBLIC IP: $PUBLIC_IP"
+          echo ""
+          echo "🔐 SSH ACCESS (Bitvise):"
+          echo "   Host: $TS_IP (or $PUBLIC_IP)"
+          echo "   Port: 22"
+          echo "   Username: admin  or  root"
+          echo "   Password: Admin@2026  or  Root@2026"
+          echo ""
+          echo "🖥️ RDP ACCESS:"
+          echo "   Host: $TS_IP"
+          echo "   Port: 3389"
+          echo "   Username: admin"
+          echo "   Password: Admin@2026"
+          echo ""
+          echo "📁 SFTP ACCESS:"
+          echo "   Host: $TS_IP"
+          echo "   Port: 22"
+          echo "   Username: admin"
+          echo "   Password: Admin@2026"
+          echo "=================================================="
+
+      - name: 6. Keep Server Alive
+        run: |
+          # نمایش اطلاعات سرویس‌ها
+          echo "Active services:"
+          sudo systemctl status ssh --no-pager
+          sudo systemctl status xrdp --no-pager
+          sudo systemctl status tailscaled --no-pager
+          
+          # Keep alive
+          for i in {1..360}; do
+            sleep 60
+            echo "[$i/360] Server running - SSH on port 22, RDP on port 3389"
+            
+            # نمایش IP هر ساعت
+            if [ $((i % 60)) -eq 0 ]; then
+              echo "Current IP: $(tailscale ip -4)"
+            fi
+          done
