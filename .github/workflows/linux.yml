@@ -1,3 +1,4 @@
+```
 name: Linux Server (Root + All Ports Open)
 
 on:
@@ -41,19 +42,16 @@ jobs:
           sudo systemctl enable ssh
           sudo systemctl start ssh
 
-      - name: Install Desktop and RDP
+      - name: Install Basic Tools
         run: |
-          sudo apt-get install xfce4 xfce4-goodies xorg xrdp -y
-          echo "xfce4-session" > ~/.xsession
-          sudo systemctl enable xrdp
-          sudo systemctl start xrdp
+          sudo apt-get install -y htop nano vim git python3 python3-pip build-essential screen tmux ncdu rsync
 
       - name: Install Tailscale
         env:
           TAILSCALE_AUTHKEY: ${{ secrets.TAILSCALE_AUTHKEY }}
         run: |
           curl -fsSL https://tailscale.com/install.sh | sh
-          sudo tailscale up --authkey="$TAILSCALE_AUTHKEY" --hostname="linux-allports"
+          sudo tailscale up --authkey="$TAILSCALE_AUTHKEY" --hostname="linux-vps"
           sleep 5
           TS_IP=$(tailscale ip -4)
           PUBLIC_IP=$(curl -s ifconfig.me)
@@ -71,34 +69,35 @@ jobs:
           echo "  Username: root"
           echo "  Password: Root@2026"
           echo ""
-          echo "RDP ACCESS:"
-          echo "  Host: $TS_IP"
-          echo "  Port: 3389"
-          echo "  Username: root"
-          echo "  Password: Root@2026"
-          echo ""
           echo "ALL PORTS ARE OPEN"
-          echo "  Port 22, 80, 443, 3389, 8080, etc"
+          echo "  Port 22, 80, 443, 8080, etc"
           echo "=================================================="
 
-      - name: Show Open Ports
+      - name: Show System Info
         run: |
+          echo "SYSTEM INFORMATION:"
+          echo "OS: $(lsb_release -ds)"
+          echo "Kernel: $(uname -r)"
+          echo "CPU: $(nproc) cores"
+          echo "RAM: $(free -h | grep Mem | awk '{print $2}')"
+          echo "Disk: $(df -h / | awk 'NR==2 {print $2}')"
+          echo ""
           echo "OPEN PORTS:"
           sudo netstat -tulpn | grep LISTEN
           echo ""
           echo "FIREWALL STATUS:"
           sudo ufw status
-          echo ""
-          echo "IP ADDRESS:"
-          ip addr show
 
       - name: Keep Server Alive
         run: |
           echo "SERVER RUNNING WITH ALL PORTS OPEN"
           echo "Firewall: DISABLED"
           echo "Root Access: ENABLED"
+          echo "SSH Port: 22 OPEN"
           echo ""
           while true; do
             sleep 60
             echo "[$(date)] Server running - All ports open"
           done
+
+```
